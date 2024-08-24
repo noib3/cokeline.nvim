@@ -204,7 +204,8 @@ local prepare = function(visible_buffers)
   if left_width > available_width_left then
     components.shorten(
       buffer_components,
-      available_width_left + current_width + right_width,
+      available_width - rhs_width,
+      -- available_width_left + current_width + right_width + rhs_width,
       "left"
     )
   end

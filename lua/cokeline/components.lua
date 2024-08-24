@@ -150,40 +150,46 @@ Component.shorten = function(self, to_width, direction)
   -- If a direction isn't given we're shortening a component within a buffer.
   -- Here we use that component's `truncation.direction`, and we don't add any
   -- additional spaces.
+  if self.width == 1 or self.bufnr == vim.api.nvim_get_current_buf() then
+    return
+  end
+  local extends = ""
+  local len_ext = vim.fn.strcharlen(extends)
   if direction then
-    local available_width = to_width - 2
+    local available_width = to_width - 1 - len_ext
     local start = direction == "left" and self.width - available_width or 0
-    self.text = (direction == "left" and " …%s" or "%s… "):format(
-      fn.strcharpart(self.text, start, available_width)
-    )
+    self.text = (
+      direction == "left" and (" " .. extends .. "%s")
+      or ("%s" .. extends .. " ")
+    ):format(fn.strcharpart(self.text, start, available_width))
   elseif self.truncation.direction == "middle" then
-    local available_width = to_width - 1
+    local available_width = to_width - len_ext
     local width_left = math.floor(available_width / 2)
     local width_right = width_left + available_width % 2
-    self.text = ("%s…%s"):format(
+    self.text = ("%s" .. extends .. "%s"):format(
       fn.strcharpart(self.text, 0, width_left),
       fn.strcharpart(self.text, self.width - width_right, width_right)
     )
   else
     direction = self.truncation.direction
-    local available_width = to_width - 1
+    local available_width = to_width - len_ext
     local start = direction == "left" and self.width - available_width or 0
-    self.text = (direction == "left" and "…%s" or "%s…"):format(
-      fn.strcharpart(self.text, start, available_width)
-    )
+    self.text = (
+      direction == "left" and (extends .. "%s") or ("%s" .. extends)
+    ):format(fn.strcharpart(self.text, start, available_width))
   end
 
   -- `fn.strcharpart` can fail with wide characters. For example,
   -- `fn.strcharpart("｜", 0, 1)` will still return "｜" since that character
   -- takes up two columns. This is to handle such cases.
-  if fn.strwidth(self.text) ~= to_width then
-    local fmt = (direction == "left" and "%s…")
-      or (direction == "right" and "…%s")
+  if fn.strdisplaywidth(self.text) ~= to_width then
+    local fmt = (direction == "left" and ("%s" .. extends))
+      or (direction == "right" and (extends .. "%s"))
       or "%s "
     self.text = fmt:format(rep(" ", to_width ~= nil and to_width - 1 or 0))
   end
 
-  self.width = fn.strwidth(self.text)
+  self.width = fn.strdisplaywidth(self.text)
 end
 
 ---@param components  Component[]
@@ -217,37 +223,50 @@ local shorten_components = function(components, to_width, direction)
   -- necessary. We could start from an empty list and add until there's space,
   -- but I think there's usually more components to keep than to throw away, so
   -- this should be faster in most cases.
-  local last_removed_component
-  while
-    (current_width > to_width)
-    or (current_width - components[i].width + extra > to_width)
-  do
-    local removed = remove(components, i)
-    if removed then
-      last_removed_component = removed
-      current_width = current_width - last_removed_component.width
-      i = direction == "left" and 1 or i - 1
-      if #components == 0 then
+  -- local last_removed_component
+  -- while
+  --   (current_width > to_width)
+  --   or (current_width - components[i].width + extra > to_width)
+  -- do
+  --   local removed = remove(components, i)
+  --   if removed then
+  --     last_removed_component = removed
+  --     current_width = current_width - last_removed_component.width
+  --     i = direction == "left" and 1 or i - 1
+  --     if #components == 0 then
+  --       break
+  --     end
+  --   else
+  --     break
+  --   end
+  -- end
+  --
+  -- if
+  --   last_removed_component
+  --   and (to_width - current_width > extra or #components == 0)
+  -- then
+  --   i = direction == "left" and 1 or i + 1
+  --   last_removed_component:shorten(to_width - current_width, direction)
+  --   insert(components, i, last_removed_component)
+  -- else
+  --   -- Here we "shorten" a component to more than its current width.
+  --   components[i]:shorten(
+  --     components[i].width + to_width - current_width,
+  --     direction
+  --   )
+  -- end
+
+  while current_width > to_width do
+    for _, component in ipairs(components) do
+      ---@cast component Component
+      local c_width = component.width
+      component:shorten(component.width - 1)
+      local diff = c_width - component.width
+      current_width = current_width - diff
+      if current_width <= to_width then
         break
       end
-    else
-      break
     end
-  end
-
-  if
-    last_removed_component
-    and (to_width - current_width > extra or #components == 0)
-  then
-    i = direction == "left" and 1 or i + 1
-    last_removed_component:shorten(to_width - current_width, direction)
-    insert(components, i, last_removed_component)
-  else
-    -- Here we "shorten" a component to more than its current width.
-    components[i]:shorten(
-      components[i].width + to_width - current_width,
-      direction
-    )
   end
 
   return components
